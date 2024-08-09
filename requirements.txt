@@ -1,0 +1,11 @@
+Langchain
+langchain_community
+gradio
+python-dotenv
+openai
+youtube-transcript-api
+Tiktoken
+sentence_transformers
+faiss-cpu
+scikit-learn
+requests

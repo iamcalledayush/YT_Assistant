@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Query Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 50px;
+        }
+        label {
+            display: block;
+            margin-bottom: 10px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .output {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <h1>YouTube Query Processor</h1>
+    <form id="queryForm">
+        <label for="query">Query:</label>
+        <input type="text" id="query" name="query" required>
+        
+        <label for="link">YouTube Video Link:</label>
+        <input type="text" id="link" name="link" required>
+        
+        <button type="submit">Submit</button>
+    </form>
+
+    <div class="output" id="output"></div>
+
+    <script>
+        document.getElementById('queryForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const query = document.getElementById('query').value;
+            const link = document.getElementById('link').value;
+
+            fetch('/process', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    'query': query,
+                    'link': link
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const outputDiv = document.getElementById('output');
+                if (data.error) {
+                    outputDiv.innerHTML = `<p style="color:red;">Error: ${data.error}</p>`;
+                } else {
+                    outputDiv.innerHTML = `<p>Result:</p><pre>${data.result}</pre>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('output').innerHTML = `<p style="color:red;">Error: ${error}</p>`;
+            });
+        });
+    </script>
+</body>
+</html>
