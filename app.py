@@ -80,6 +80,11 @@ st.write("""
 ## Welcome to the YouTube Query Assistant!
 
 This AI-powered tool is designed to save you time by providing precise answers to your queries about any YouTube video.
+
+### Why Use This Tool?
+- **Time-Saving**: No need to scrub through long videos. Get the answers you need in seconds.
+- **Precision**: Target specific content within a video without watching it in full.
+- **Informed Viewing**: Know in advance if the video covers the topic you’re interested in.
 """)
 
 video_url = st.text_input("Enter YouTube video URL")
