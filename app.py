@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+import streamlit as st
 from langchain_community.document_loaders import YoutubeLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
@@ -6,9 +6,8 @@ import faiss
 import requests
 import json
 
-app = Flask(__name__)
-
-gemini_api_key = "AIzaSyCWu7t3NGc0mx06fHZqGlBKJc_h-I20ppk"
+load_dotenv()
+gemini_api_key = os.getenv("GEMINI_API_KEY")
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def create_db_from_youtube_video_url(video_url: str):
@@ -74,23 +73,25 @@ def get_response_from_query(docs, index, query, k=4):
 
     return generated_text, docs
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+# Streamlit interface
+st.title("YouTube Query Assistant")
 
-@app.route('/process', methods=['POST'])
-def process():
-    video_url = request.form['link']
-    query = request.form['query']
+st.write("""
+## Welcome to the YouTube Query Assistant!
 
-    try:
+This AI-powered tool is designed to save you time by providing precise answers to your queries about any YouTube video.
+""")
+
+video_url = st.text_input("Enter YouTube video URL")
+query = st.text_input("Enter your query")
+
+if st.button("Get Response"):
+    if video_url and query:
         docs, index = create_db_from_youtube_video_url(video_url)
         response, docs = get_response_from_query(docs, index, query)
         if docs is None:
-            return jsonify({'error': response})
-        return jsonify({'result': response})
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-if __name__ == '__main__':
-    app.run(debug=True)
+            st.error(response)
+        else:
+            st.write(response)
+    else:
+        st.warning("Please enter both the video URL and query.")
