@@ -5,9 +5,8 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import requests
 import json
-from dotenv import find_dotenv, load_dotenv
-import os
 
+# Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
