@@ -85,6 +85,11 @@ This AI-powered tool is designed to save you time by providing precise answers t
 - **Time-Saving**: No need to scrub through long videos. Get the answers you need in seconds.
 - **Precision**: Target specific content within a video without watching it in full.
 - **Informed Viewing**: Know in advance if the video covers the topic you’re interested in.
+
+## How It Works:
+1. **Enter the YouTube Video URL**: Provide the link to the YouTube video you want to query.
+2. **Ask Your Question**: Type in the specific information you're looking for within the video.
+3. **Get Instant Results**: The AI processes the video content and returns the most relevant information, helping you quickly determine if the video contains what you need.
 """)
 
 video_url = st.text_input("Enter YouTube video URL")
