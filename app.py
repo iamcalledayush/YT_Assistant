@@ -8,8 +8,7 @@ import json
 from dotenv import find_dotenv, load_dotenv
 import os
 
-load_dotenv()
-gemini_api_key = os.getenv("GEMINI_API_KEY")
+gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def create_db_from_youtube_video_url(video_url: str):
