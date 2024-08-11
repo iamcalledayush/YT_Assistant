@@ -80,12 +80,12 @@ st.title("YouTube Query Assistant")
 st.write("""
 ## Welcome to the YouTube Query Assistant!
 
-This AI-powered tool is designed to save you time by providing precise answers to your queries about any YouTube video. Instead of watching an entire video just to find specific information, simply enter the video URL and your query. Our assistant will analyze the video and return the relevant content directly to you.
+This AI-powered tool is designed to save you time by providing precise answers to your queries about any YouTube video. Instead of watching an entire video just to find specific information, simply enter the video URL and your query. The assistant will analyze the video and return the relevant content directly to you.
 
 ### How It Works:
 1. **Enter the YouTube Video URL**: Provide the link to the YouTube video you want to query.
 2. **Ask Your Question**: Type in the specific information you're looking for within the video.
-3. **Get Instant Results**: Our AI processes the video content and returns the most relevant information, helping you quickly determine if the video contains what you need.
+3. **Get Instant Results**: The AI processes the video content and returns the most relevant information, helping you quickly determine if the video contains what you need.
 
 ### Why Use This Tool?
 - **Time-Saving**: No need to scrub through long videos. Get the answers you need in seconds.
