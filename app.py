@@ -5,13 +5,10 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import requests
 import json
-from dotenv import find_dotenv, load_dotenv
-import os
 
 app = Flask(__name__)
 
-load_dotenv()
-gemini_api_key = os.getenv("GEMINI_API_KEY")
+gemini_api_key = "AIzaSyCWu7t3NGc0mx06fHZqGlBKJc_h-I20ppk"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def create_db_from_youtube_video_url(video_url: str):
