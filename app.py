@@ -30,6 +30,9 @@ def load_and_translate_subtitles(video_url: str):
         yt = YouTube(f"https://www.youtube.com/watch?v={video_id}")
         available_captions = yt.captions
 
+        if not available_captions:
+            return None, "No captions found for this video."
+
         # Attempt to fetch English captions or auto-generated ones
         caption = available_captions.get_by_language_code('en') or available_captions.get_by_language_code('a.en')
         
@@ -40,15 +43,21 @@ def load_and_translate_subtitles(video_url: str):
                 caption = auto_generated_caption
             else:
                 # Fall back to auto-generated subtitles in any available language (e.g., Hindi)
-                caption = available_captions.get_by_language_code('hi') or available_captions.all()[0]
+                caption = available_captions.get_by_language_code('hi') or (available_captions.all()[0] if available_captions else None)
         
         if caption:
-            transcript = caption.generate_srt_captions()
+            try:
+                transcript = caption.generate_srt_captions()
+            except Exception as e:
+                return None, f"Error generating subtitles: {str(e)}"
 
             # If the subtitles are not in English, translate them
-            if caption.code != 'en' and caption.code != 'a.en':
-                translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
-                return translated_transcript, None
+            if caption.code not in ['en', 'a.en']:
+                try:
+                    translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
+                    return translated_transcript, None
+                except Exception as e:
+                    return None, f"Error translating subtitles: {str(e)}"
             else:
                 return transcript, None
         else:
