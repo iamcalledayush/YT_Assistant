@@ -28,23 +28,28 @@ def load_and_translate_subtitles(video_url: str):
             return None, "Invalid YouTube URL or video ID could not be extracted."
         
         yt = YouTube(f"https://www.youtube.com/watch?v={video_id}")
-        if yt.captions:
-            # Attempt to fetch English subtitles or auto-generated ones
-            caption = yt.captions.get_by_language_code('en') or yt.captions.get_by_language_code('a.en')
-            if not caption:
-                # Fall back to auto-generated subtitles in any available language (e.g., Hindi)
-                caption = yt.captions.get_by_language_code('hi') or yt.captions.all()[0]
+        available_captions = yt.captions
 
-            transcript = caption.generate_srt_captions()
-
-            # If the subtitles are not in English, translate them
-            if caption.code != 'en':
-                translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
-                return translated_transcript, None
-            else:
-                return transcript, None
-        else:
+        if not available_captions:
             return None, "No captions found for this video."
+
+        # Print available captions for debugging
+        st.write("Available captions:", [caption.code for caption in available_captions])
+
+        # Attempt to fetch English captions or auto-generated ones
+        caption = available_captions.get_by_language_code('en') or available_captions.get_by_language_code('a.en')
+        if not caption:
+            # Fall back to auto-generated subtitles in any available language (e.g., Hindi)
+            caption = available_captions.get_by_language_code('hi') or available_captions.all()[0]
+
+        transcript = caption.generate_srt_captions()
+
+        # If the subtitles are not in English, translate them
+        if caption.code != 'en':
+            translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
+            return translated_transcript, None
+        else:
+            return transcript, None
     except Exception as e:
         return None, f"Error loading or translating subtitles: {str(e)}"
 
