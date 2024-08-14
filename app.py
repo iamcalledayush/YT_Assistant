@@ -30,18 +30,18 @@ def create_db_from_youtube_video_url(video_url: str):
         transcript = loader.load()
 
         if not transcript:
-            return None, None, "I ran into a problem, please try again after sometime."
+            return None, None, "Transcript could not be loaded or is empty."
         
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         docs = text_splitter.split_documents(transcript)
 
         if not docs:
-            return None, None, "I ran into a problem, please try again after sometime."
+            return None, None, "No documents were created from the transcript."
 
         docs_content = [doc.page_content for doc in docs]
 
         if not docs_content:
-            return None, None, "I ran into a problem, please try again after sometime."
+            return None, None, "The content of the documents is empty."
 
         embeddings = embedding_model.encode(docs_content)
 
@@ -51,7 +51,7 @@ def create_db_from_youtube_video_url(video_url: str):
 
         return docs, index, None
     except Exception as e:
-        return None, None, "I ran into a problem, please try again after sometime."
+        return None, None, f"An error occurred while processing the video: {str(e)}"
 
 def get_response_from_query(docs, index, query, k=4):
     query_embedding = embedding_model.encode([query])
@@ -59,16 +59,13 @@ def get_response_from_query(docs, index, query, k=4):
 
     docs_page_content = " ".join([docs[idx].page_content for idx in indices[0]])
 
-    # Modify the prompt to Gemini LLM to ensure it talks in terms of "video"
-    prompt = f"Question: {query}\nVideo Content: {docs_page_content}\nPlease respond as if discussing the video itself, without referencing transcripts or any such terms."
-
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
     headers = {
         "Content-Type": "application/json"
     }
     payload = {
         "contents": [
-            {"parts": [{"text": prompt}]}
+            {"parts": [{"text": f"Question: {query}\nDocs: {docs_page_content}"}]}
         ]
     }
 
