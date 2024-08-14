@@ -40,6 +40,11 @@ def fetch_captions_by_scraping(video_id: str, target_lang='en'):
                 # Use regex to extract the JSON part
                 json_text = re.search(r'ytInitialPlayerResponse\s*=\s*({.*?});', script.text).group(1)
                 data = json.loads(json_text)
+                
+                # Ensure 'captions' key exists in the extracted data
+                if 'captions' not in data:
+                    return None, "'captions' key not found in the YouTube page's JSON data."
+                
                 captions = data['captions']['playerCaptionsTracklistRenderer']['captionTracks']
 
                 # Look for auto-generated captions in the desired language
