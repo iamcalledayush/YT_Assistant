@@ -8,6 +8,7 @@ from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
 from bs4 import BeautifulSoup
+import re
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
@@ -36,7 +37,8 @@ def fetch_captions_by_scraping(video_id: str, target_lang='en'):
     for script in scripts:
         if 'ytInitialPlayerResponse' in script.text:
             try:
-                json_text = script.text.split('ytInitialPlayerResponse = ')[1].split(';var')[0]
+                # Use regex to extract the JSON part
+                json_text = re.search(r'ytInitialPlayerResponse\s*=\s*({.*?});', script.text).group(1)
                 data = json.loads(json_text)
                 captions = data['captions']['playerCaptionsTracklistRenderer']['captionTracks']
 
