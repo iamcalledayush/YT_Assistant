@@ -38,7 +38,11 @@ def fetch_captions_by_scraping(video_id: str, target_lang='en'):
         if 'ytInitialPlayerResponse' in script.text:
             try:
                 # Use regex to extract the JSON part
-                json_text = re.search(r'ytInitialPlayerResponse\s*=\s*({.*?});', script.text).group(1)
+                match = re.search(r'ytInitialPlayerResponse\s*=\s*({.*?});', script.text)
+                if not match:
+                    return None, "Could not find ytInitialPlayerResponse in the script."
+                
+                json_text = match.group(1)
                 data = json.loads(json_text)
                 
                 # Ensure 'captions' key exists in the extracted data
@@ -53,6 +57,8 @@ def fetch_captions_by_scraping(video_id: str, target_lang='en'):
                         subtitle_url = caption['baseUrl']
                         subtitle_response = requests.get(subtitle_url)
                         return subtitle_response.text, None
+            except json.JSONDecodeError as e:
+                return None, f"JSON decoding error: {str(e)}"
             except Exception as e:
                 return None, f"Error extracting captions: {str(e)}"
 
