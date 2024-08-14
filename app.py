@@ -8,11 +8,15 @@ from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
 import time
+import socket
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
+
+# Set socket options to prevent broken pipe errors
+socket.setdefaulttimeout(10)
 
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
@@ -22,8 +26,9 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def fetch_subtitles_with_retry(subtitle_url, retries=3, timeout=10):
-    """Fetch subtitles with retries in case of temporary network failures."""
+def fetch_subtitles_with_retry(subtitle_url, retries=5, timeout=10):
+    """Fetch subtitles with retries and exponential backoff in case of temporary network failures."""
+    backoff_time = 2
     for attempt in range(retries):
         try:
             response = requests.get(subtitle_url, timeout=timeout)
@@ -31,7 +36,8 @@ def fetch_subtitles_with_retry(subtitle_url, retries=3, timeout=10):
             return response.text, None
         except requests.exceptions.RequestException as e:
             if attempt < retries - 1:
-                time.sleep(2)  # Wait before retrying
+                time.sleep(backoff_time)
+                backoff_time *= 2  # Exponential backoff
                 continue
             else:
                 return None, f"Failed to fetch subtitles after {retries} attempts: {str(e)}"
