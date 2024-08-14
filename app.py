@@ -42,14 +42,17 @@ def load_and_translate_subtitles(video_url: str):
             # Fall back to auto-generated subtitles in any available language (e.g., Hindi)
             caption = available_captions.get_by_language_code('hi') or available_captions.all()[0]
 
-        transcript = caption.generate_srt_captions()
+        if caption:
+            transcript = caption.generate_srt_captions()
 
-        # If the subtitles are not in English, translate them
-        if caption.code != 'en':
-            translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
-            return translated_transcript, None
+            # If the subtitles are not in English, translate them
+            if caption.code != 'en':
+                translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
+                return translated_transcript, None
+            else:
+                return transcript, None
         else:
-            return transcript, None
+            return None, "Captions could not be retrieved. They might be auto-generated in a different way."
     except Exception as e:
         return None, f"Error loading or translating subtitles: {str(e)}"
 
