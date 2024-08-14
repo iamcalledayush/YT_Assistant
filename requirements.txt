@@ -1,6 +1,6 @@
 Langchain
 langchain_community
-gradio
+streamlit
 python-dotenv
 openai
 youtube-transcript-api
@@ -9,3 +9,5 @@ sentence_transformers
 faiss-cpu
 scikit-learn
 requests
+pytube
+googletrans==4.0.0-rc1
