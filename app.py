@@ -36,7 +36,7 @@ def load_and_translate_subtitles(video_url: str):
         except TranscriptsDisabled:
             return None, "Transcripts are disabled for this video."
         
-        # If the transcript is not in English, translate it
+        # Detect if the transcript is in English or another language
         detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
         if detected_lang not in ['en', 'a.en']:
             translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
@@ -53,12 +53,15 @@ def create_db_from_youtube_video_url(video_url: str):
             return None, None, error
         
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        docs = text_splitter.split_documents([{"page_content": transcript}])
+        docs = text_splitter.split_text(transcript)  # Use split_text instead of split_documents
+
+        # Convert the resulting split text into the required format
+        docs = [{"page_content": doc} for doc in docs]
 
         if not docs:
             return None, None, "Failed to split the transcript into documents."
 
-        docs_content = [doc.page_content for doc in docs]
+        docs_content = [doc["page_content"] for doc in docs]
 
         if not docs_content:
             return None, None, "Document content is empty after splitting the transcript."
@@ -78,7 +81,7 @@ def get_response_from_query(docs, index, query, k=4):
         query_embedding = embedding_model.encode([query])
         distances, indices = index.search(query_embedding, k)
 
-        docs_page_content = " ".join([docs[idx].page_content for idx in indices[0]])
+        docs_page_content = " ".join([docs[idx]["page_content"] for idx in indices[0]])
 
         prompt = f"Question: {query}\nVideo Content: {docs_page_content}\nPlease respond as if discussing the video itself, without referencing transcripts or any such terms."
 
