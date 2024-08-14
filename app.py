@@ -32,13 +32,27 @@ def load_and_translate_subtitles(video_url: str):
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
             transcript = " ".join([item['text'] for item in transcript_list])
         except NoTranscriptFound:
-            return None, "No captions or transcripts found for this video."
+            # If no transcript is found, try to retrieve one from available transcripts
+            transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+            transcript = None
+            for t in transcripts:
+                try:
+                    if t.is_translatable:
+                        transcript_list = t.translate('en').fetch()
+                    else:
+                        transcript_list = t.fetch()
+                    transcript = " ".join([item['text'] for item in transcript_list])
+                    break
+                except Exception:
+                    continue
+            if transcript is None:
+                return None, "No captions or transcripts found for this video."
         except TranscriptsDisabled:
             return None, "Transcripts are disabled for this video."
-        
-        # Detect if the transcript is in English or another language
-        detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
-        if detected_lang not in ['en', 'a.en']:
+
+        # Translate if the transcript is not already in English
+        detected_lang = transcripts.find_transcript(['en', 'a.en']).language_code if transcripts else None
+        if detected_lang and detected_lang not in ['en', 'a.en']:
             translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
             return translated_transcript, None
         else:
