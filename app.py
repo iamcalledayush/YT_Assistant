@@ -55,7 +55,7 @@ def load_and_translate_subtitles(video_url: str):
                 else:
                     return transcript, None
             else:
-                return None, "No captions or transcripts found for this video."
+                return None, "No captions or transcripts found for this video, my boy!!."
         
         # Detect if the transcript is in English or another language
         detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
