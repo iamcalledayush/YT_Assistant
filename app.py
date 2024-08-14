@@ -7,8 +7,6 @@ import json
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
-from bs4 import BeautifulSoup
-import re
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
@@ -23,72 +21,28 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def fetch_captions_by_scraping(video_id: str, target_lang='en'):
-    """Fetch auto-generated captions by scraping the YouTube page."""
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    response = requests.get(url)
-    if response.status_code != 200:
-        return None, f"Failed to load YouTube page for video ID: {video_id}"
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-    scripts = soup.find_all('script')
-
-    # Find the script that contains 'ytInitialPlayerResponse'
-    for script in scripts:
-        if 'ytInitialPlayerResponse' in script.text:
-            try:
-                # Use regex to extract the JSON part
-                match = re.search(r'ytInitialPlayerResponse\s*=\s*({.*?});', script.text)
-                if not match:
-                    return None, "Could not find ytInitialPlayerResponse in the script."
-                
-                json_text = match.group(1)
-                if json_text:
-                    data = json.loads(json_text)
-                
-                    # Ensure 'captions' key exists in the extracted data
-                    if 'captions' not in data:
-                        return None, "'captions' key not found in the YouTube page's JSON data."
-                    
-                    captions = data['captions']['playerCaptionsTracklistRenderer']['captionTracks']
-
-                    # Look for auto-generated captions in the desired language
-                    for caption in captions:
-                        if 'kind' in caption and caption['kind'] == 'asr' and caption['languageCode'] == target_lang:
-                            subtitle_url = caption['baseUrl']
-                            subtitle_response = requests.get(subtitle_url)
-                            return subtitle_response.text, None
-                else:
-                    return None, "No JSON text found after matching."
-            except json.JSONDecodeError as e:
-                return None, f"JSON decoding error: {str(e)}"
-            except Exception as e:
-                return None, f"Error extracting captions: {str(e)}"
-
-    return None, "No auto-generated captions found or failed to extract."
-
 def load_and_translate_subtitles(video_url: str):
     try:
         video_id = extract_video_id(video_url)
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
         
-        # Try to fetch a transcript using YouTubeTranscriptApi
+        # Attempt to fetch the transcript using youtube-transcript-api
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
             transcript = " ".join([item['text'] for item in transcript_list])
-            language_code = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
-        except (NoTranscriptFound, TranscriptsDisabled):
-            # Fallback to scraping if transcripts are disabled or not found
-            transcript, error = fetch_captions_by_scraping(video_id, target_lang='en')
-            if error:
-                return None, error
-            transcript = translator.translate(transcript, dest='en').text if transcript else None
-        
-        if transcript is None:
+        except NoTranscriptFound:
             return None, "No captions or transcripts found for this video."
+        except TranscriptsDisabled:
+            return None, "Transcripts are disabled for this video."
         
-        return transcript, None
+        # Detect if the transcript is in English or another language
+        detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
+        if detected_lang not in ['en', 'a.en']:
+            translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
+            return translated_transcript, None
+        else:
+            return transcript, None
     except Exception as e:
         return None, f"Error loading or translating subtitles: {str(e)}"
 
