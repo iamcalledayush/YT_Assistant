@@ -35,18 +35,22 @@ def load_and_translate_subtitles(video_url: str):
         except (NoTranscriptFound, TranscriptsDisabled):
             # Fallback to pytube if youtube-transcript-api fails
             yt = YouTube(video_url)
-            caption = yt.captions.get_by_language_code('en') or yt.captions.get_by_language_code('a.en')
+            captions = yt.captions
+
+            # Try to get English captions or auto-generated ones
+            caption = captions.get_by_language_code('en') or captions.get_by_language_code('a.en')
 
             if not caption:
-                # Try to get any available auto-generated caption
-                caption = yt.captions.all()[0] if yt.captions.all() else None
+                # Fall back to any available auto-generated caption
+                caption = next((c for c in captions if 'a.' in c.code), None)
 
             if caption:
+                # Get the caption as SRT format
                 transcript = caption.generate_srt_captions()
 
                 # Translate if the captions are not in English
                 if caption.code not in ['en', 'a.en']:
-                    translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
+                    translated_transcript = translator.translate(transcript, src=caption.code.split('.')[-1], dest='en').text
                     return translated_transcript, None
                 else:
                     return transcript, None
