@@ -11,20 +11,33 @@ gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def create_db_from_youtube_video_url(video_url: str):
-    loader = YoutubeLoader.from_youtube_url(video_url)
-    transcript = loader.load()
+    try:
+        loader = YoutubeLoader.from_youtube_url(video_url)
+        transcript = loader.load()
+        
+        if not transcript:
+            return None, None, "Transcript could not be loaded or is empty."
+        
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        docs = text_splitter.split_documents(transcript)
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    docs = text_splitter.split_documents(transcript)
+        if not docs:
+            return None, None, "No documents were created from the transcript."
 
-    docs_content = [doc.page_content for doc in docs]
-    embeddings = embedding_model.encode(docs_content)
+        docs_content = [doc.page_content for doc in docs]
 
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dimension)
-    index.add(embeddings)
+        if not docs_content:
+            return None, None, "The content of the documents is empty."
 
-    return docs, index
+        embeddings = embedding_model.encode(docs_content)
+
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatL2(dimension)
+        index.add(embeddings)
+
+        return docs, index, None
+    except Exception as e:
+        return None, None, f"An error occurred while processing the video: {str(e)}"
 
 def get_response_from_query(docs, index, query, k=4):
     query_embedding = embedding_model.encode([query])
@@ -97,11 +110,14 @@ query = st.text_input("Enter your query")
 
 if st.button("Get Response"):
     if video_url and query:
-        docs, index = create_db_from_youtube_video_url(video_url)
-        response, docs = get_response_from_query(docs, index, query)
-        if docs is None:
-            st.error(response)
+        docs, index, error = create_db_from_youtube_video_url(video_url)
+        if error:
+            st.error(error)
         else:
-            st.write(response)
+            response, docs = get_response_from_query(docs, index, query)
+            if docs is None:
+                st.error(response)
+            else:
+                st.write(response)
     else:
         st.warning("Please enter both the video URL and query.")
