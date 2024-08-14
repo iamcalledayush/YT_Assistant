@@ -1,4 +1,4 @@
-import youtube_dl
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import faiss
@@ -26,46 +26,23 @@ def load_and_translate_subtitles(video_url: str):
         video_id = extract_video_id(video_url)
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
-
-        # Use youtube_dl to fetch captions
-        ydl_opts = {
-            'skip_download': True,
-            'writesubtitles': True,
-            'subtitlesformat': 'srt',
-            'subtitleslangs': ['en', 'a.en', 'auto'],
-            'quiet': True,
-        }
-
-        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(video_url, download=False)
-            subtitles = info_dict.get('subtitles', {})
-            auto_subtitles = info_dict.get('automatic_captions', {})
-
-            # Try to get manually provided English subtitles first
-            subtitle_url = None
-            if 'en' in subtitles:
-                subtitle_url = subtitles['en'][0]['url']
-            elif 'a.en' in auto_subtitles:
-                subtitle_url = auto_subtitles['a.en'][0]['url']
-            else:
-                # Try to get any auto-generated subtitles if no English ones are available
-                for lang_code, subtitle_data in auto_subtitles.items():
-                    if lang_code.startswith('a.'):
-                        subtitle_url = subtitle_data[0]['url']
-                        break
-
-            if subtitle_url:
-                response = requests.get(subtitle_url)
-                response.raise_for_status()
-                transcript = response.text
-
-                # Translate if subtitles are not in English
-                if 'en' not in subtitle_url and 'a.en' not in subtitle_url:
-                    transcript = translator.translate(transcript, dest='en').text
-
-                return transcript, None
-            else:
-                return None, "No captions or transcripts found for this video."
+        
+        # Attempt to fetch the transcript using youtube-transcript-api
+        try:
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            transcript = " ".join([item['text'] for item in transcript_list])
+        except NoTranscriptFound:
+            return None, "Sorry, currently I am only capable of understanding English, can you try a video in English Language?"
+        except TranscriptsDisabled:
+            return None, "Video owner has disabled access to third party applications like me :("
+        
+        # Detect if the transcript is in English or another language
+        detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
+        if detected_lang not in ['en', 'a.en']:
+            translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
+            return translated_transcript, None
+        else:
+            return transcript, None
     except Exception as e:
         return None, f"Error loading or translating subtitles: {str(e)}"
 
