@@ -1,5 +1,4 @@
 from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
-from pytube import YouTube
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import faiss
@@ -28,33 +27,14 @@ def load_and_translate_subtitles(video_url: str):
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
         
-        # First attempt to fetch the transcript using youtube-transcript-api
+        # Attempt to fetch the transcript using youtube-transcript-api
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
             transcript = " ".join([item['text'] for item in transcript_list])
-        except (NoTranscriptFound, TranscriptsDisabled):
-            # If youtube-transcript-api fails, fall back to pytube
-            yt = YouTube(video_url)
-            captions = yt.captions
-
-            # Attempt to get English captions or auto-generated ones
-            caption = captions.get_by_language_code('en') or captions.get_by_language_code('a.en')
-            
-            if not caption:
-                # Fall back to non-English auto-generated captions
-                caption = captions.get_by_language_code('a.en') or captions.all()[0]
-
-            if caption:
-                transcript = caption.generate_srt_captions()
-
-                # If the captions are not in English, translate them
-                if caption.code != 'en' and caption.code != 'a.en':
-                    translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
-                    return translated_transcript, None
-                else:
-                    return transcript, None
-            else:
-                return None, "No captions or transcripts found for this video."
+        except NoTranscriptFound:
+            return None, "No captions or transcripts found for this video."
+        except TranscriptsDisabled:
+            return None, "Transcripts are disabled for this video."
         
         # Detect if the transcript is in English or another language
         detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
