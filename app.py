@@ -30,29 +30,29 @@ def load_and_translate_subtitles(video_url: str):
         yt = YouTube(f"https://www.youtube.com/watch?v={video_id}")
         available_captions = yt.captions
 
-        if not available_captions:
-            return None, "No captions found for this video."
-
-        # Print available captions for debugging
-        st.write("Available captions:", [caption.code for caption in available_captions])
-
         # Attempt to fetch English captions or auto-generated ones
         caption = available_captions.get_by_language_code('en') or available_captions.get_by_language_code('a.en')
+        
         if not caption:
-            # Fall back to auto-generated subtitles in any available language (e.g., Hindi)
-            caption = available_captions.get_by_language_code('hi') or available_captions.all()[0]
-
+            # Check for auto-generated captions
+            auto_generated_caption = yt.captions.get_by_language_code('a.en')
+            if auto_generated_caption:
+                caption = auto_generated_caption
+            else:
+                # Fall back to auto-generated subtitles in any available language (e.g., Hindi)
+                caption = available_captions.get_by_language_code('hi') or available_captions.all()[0]
+        
         if caption:
             transcript = caption.generate_srt_captions()
 
             # If the subtitles are not in English, translate them
-            if caption.code != 'en':
+            if caption.code != 'en' and caption.code != 'a.en':
                 translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
                 return translated_transcript, None
             else:
                 return transcript, None
         else:
-            return None, "Captions could not be retrieved. They might be auto-generated in a different way."
+            return None, "No captions or auto-generated captions found for this video."
     except Exception as e:
         return None, f"Error loading or translating subtitles: {str(e)}"
 
