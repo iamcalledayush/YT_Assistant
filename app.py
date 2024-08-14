@@ -1,15 +1,17 @@
-import streamlit as st
-from langchain_community.document_loaders import YoutubeLoader
+from pytube import YouTube
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import faiss
 import requests
 import json
 from urllib.parse import urlparse, parse_qs
+import streamlit as st
+from googletrans import Translator
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+translator = Translator()
 
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
@@ -19,29 +21,49 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def create_db_from_youtube_video_url(video_url: str):
+def load_and_translate_subtitles(video_url: str):
     try:
         video_id = extract_video_id(video_url)
         if not video_id:
-            return None, None, "Invalid YouTube URL or video ID could not be extracted."
+            return None, "Invalid YouTube URL or video ID could not be extracted."
         
-        video_url_base = f"https://www.youtube.com/watch?v={video_id}"
-        loader = YoutubeLoader.from_youtube_url(video_url_base)
-        transcript = loader.load()
+        yt = YouTube(f"https://www.youtube.com/watch?v={video_id}")
+        if yt.captions:
+            # Attempt to fetch English subtitles or auto-generated ones
+            caption = yt.captions.get_by_language_code('en') or yt.captions.get_by_language_code('a.en')
+            if not caption:
+                # Fall back to auto-generated subtitles in any available language (e.g., Hindi)
+                caption = yt.captions.get_by_language_code('hi') or yt.captions.all()[0]
 
-        if not transcript:
-            return None, None, "Transcript could not be loaded or is empty."
+            transcript = caption.generate_srt_captions()
+
+            # If the subtitles are not in English, translate them
+            if caption.code != 'en':
+                translated_transcript = translator.translate(transcript, src=caption.code, dest='en').text
+                return translated_transcript, None
+            else:
+                return transcript, None
+        else:
+            return None, "I ran into a problem, please try again after sometime."
+    except Exception as e:
+        return None, "I ran into a problem, please try again after sometime."
+
+def create_db_from_youtube_video_url(video_url: str):
+    try:
+        transcript, error = load_and_translate_subtitles(video_url)
+        if error:
+            return None, None, error
         
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        docs = text_splitter.split_documents(transcript)
+        docs = text_splitter.split_documents([{"page_content": transcript}])
 
         if not docs:
-            return None, None, "No documents were created from the transcript."
+            return None, None, "I ran into a problem, please try again after sometime."
 
         docs_content = [doc.page_content for doc in docs]
 
         if not docs_content:
-            return None, None, "The content of the documents is empty."
+            return None, None, "I ran into a problem, please try again after sometime."
 
         embeddings = embedding_model.encode(docs_content)
 
@@ -51,7 +73,7 @@ def create_db_from_youtube_video_url(video_url: str):
 
         return docs, index, None
     except Exception as e:
-        return None, None, f"An error occurred while processing the video: {str(e)}"
+        return None, None, "I ran into a problem, please try again after sometime."
 
 def get_response_from_query(docs, index, query, k=4):
     query_embedding = embedding_model.encode([query])
@@ -59,13 +81,15 @@ def get_response_from_query(docs, index, query, k=4):
 
     docs_page_content = " ".join([docs[idx].page_content for idx in indices[0]])
 
+    prompt = f"Question: {query}\nVideo Content: {docs_page_content}\nPlease respond as if discussing the video itself, without referencing transcripts or any such terms."
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
     headers = {
         "Content-Type": "application/json"
     }
     payload = {
         "contents": [
-            {"parts": [{"text": f"Question: {query}\nDocs: {docs_page_content}"}]}
+            {"parts": [{"text": prompt}]}
         ]
     }
 
