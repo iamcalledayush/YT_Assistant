@@ -7,6 +7,7 @@ import json
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
+from bs4 import BeautifulSoup
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
@@ -21,38 +22,57 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
+def fetch_captions_by_scraping(video_id: str, target_lang='en'):
+    """Fetch auto-generated captions by scraping the YouTube page."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return None, f"Failed to load YouTube page for video ID: {video_id}"
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+    scripts = soup.find_all('script')
+
+    # Find the script that contains 'ytInitialPlayerResponse'
+    for script in scripts:
+        if 'ytInitialPlayerResponse' in script.text:
+            try:
+                json_text = script.text.split('ytInitialPlayerResponse = ')[1].split(';var')[0]
+                data = json.loads(json_text)
+                captions = data['captions']['playerCaptionsTracklistRenderer']['captionTracks']
+
+                # Look for auto-generated captions in the desired language
+                for caption in captions:
+                    if 'kind' in caption and caption['kind'] == 'asr' and caption['languageCode'] == target_lang:
+                        subtitle_url = caption['baseUrl']
+                        subtitle_response = requests.get(subtitle_url)
+                        return subtitle_response.text, None
+            except Exception as e:
+                return None, f"Error extracting captions: {str(e)}"
+
+    return None, "No auto-generated captions found or failed to extract."
+
 def load_and_translate_subtitles(video_url: str):
     try:
         video_id = extract_video_id(video_url)
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
         
-        # Try to fetch a transcript in any available language
+        # Try to fetch a transcript using YouTubeTranscriptApi
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
             transcript = " ".join([item['text'] for item in transcript_list])
             language_code = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
-        except NoTranscriptFound:
-            transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
-            transcript = None
-            language_code = None
-            for t in transcripts:
-                if t.is_generated:
-                    transcript_list = t.fetch()
-                    transcript = " ".join([item['text'] for item in transcript_list])
-                    language_code = t.language_code
-                    break
-            if transcript is None:
-                return None, "No captions or transcripts found for this video."
-        except TranscriptsDisabled:
-            return None, "Transcripts are disabled for this video."
-
-        # Translate if the transcript is not already in English
-        if language_code not in ['en', 'a.en']:
-            translated_transcript = translator.translate(transcript, src=language_code, dest='en').text
-            return translated_transcript, None
-        else:
-            return transcript, None
+        except (NoTranscriptFound, TranscriptsDisabled):
+            # Fallback to scraping if transcripts are disabled or not found
+            transcript, error = fetch_captions_by_scraping(video_id, target_lang='en')
+            if error:
+                return None, error
+            transcript = translator.translate(transcript, dest='en').text if transcript else None
+        
+        if transcript is None:
+            return None, "No captions or transcripts found for this video."
+        
+        return transcript, None
     except Exception as e:
         return None, f"Error loading or translating subtitles: {str(e)}"
 
