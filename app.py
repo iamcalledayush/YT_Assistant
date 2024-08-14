@@ -27,33 +27,29 @@ def load_and_translate_subtitles(video_url: str):
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
         
-        # Attempt to fetch the transcript using youtube-transcript-api
+        # Try to fetch a transcript in any available language
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
             transcript = " ".join([item['text'] for item in transcript_list])
+            language_code = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
         except NoTranscriptFound:
-            # If no transcript is found, try to retrieve one from available transcripts
             transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
             transcript = None
+            language_code = None
             for t in transcripts:
-                try:
-                    if t.is_translatable:
-                        transcript_list = t.translate('en').fetch()
-                    else:
-                        transcript_list = t.fetch()
+                if t.is_generated:
+                    transcript_list = t.fetch()
                     transcript = " ".join([item['text'] for item in transcript_list])
+                    language_code = t.language_code
                     break
-                except Exception:
-                    continue
             if transcript is None:
                 return None, "No captions or transcripts found for this video."
         except TranscriptsDisabled:
             return None, "Transcripts are disabled for this video."
 
         # Translate if the transcript is not already in English
-        detected_lang = transcripts.find_transcript(['en', 'a.en']).language_code if transcripts else None
-        if detected_lang and detected_lang not in ['en', 'a.en']:
-            translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
+        if language_code not in ['en', 'a.en']:
+            translated_transcript = translator.translate(transcript, src=language_code, dest='en').text
             return translated_transcript, None
         else:
             return transcript, None
