@@ -43,20 +43,23 @@ def fetch_captions_by_scraping(video_id: str, target_lang='en'):
                     return None, "Could not find ytInitialPlayerResponse in the script."
                 
                 json_text = match.group(1)
-                data = json.loads(json_text)
+                if json_text:
+                    data = json.loads(json_text)
                 
-                # Ensure 'captions' key exists in the extracted data
-                if 'captions' not in data:
-                    return None, "'captions' key not found in the YouTube page's JSON data."
-                
-                captions = data['captions']['playerCaptionsTracklistRenderer']['captionTracks']
+                    # Ensure 'captions' key exists in the extracted data
+                    if 'captions' not in data:
+                        return None, "'captions' key not found in the YouTube page's JSON data."
+                    
+                    captions = data['captions']['playerCaptionsTracklistRenderer']['captionTracks']
 
-                # Look for auto-generated captions in the desired language
-                for caption in captions:
-                    if 'kind' in caption and caption['kind'] == 'asr' and caption['languageCode'] == target_lang:
-                        subtitle_url = caption['baseUrl']
-                        subtitle_response = requests.get(subtitle_url)
-                        return subtitle_response.text, None
+                    # Look for auto-generated captions in the desired language
+                    for caption in captions:
+                        if 'kind' in caption and caption['kind'] == 'asr' and caption['languageCode'] == target_lang:
+                            subtitle_url = caption['baseUrl']
+                            subtitle_response = requests.get(subtitle_url)
+                            return subtitle_response.text, None
+                else:
+                    return None, "No JSON text found after matching."
             except json.JSONDecodeError as e:
                 return None, f"JSON decoding error: {str(e)}"
             except Exception as e:
