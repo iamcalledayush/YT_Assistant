@@ -7,6 +7,7 @@ import json
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
+import time
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
@@ -20,6 +21,20 @@ def extract_video_id(youtube_url: str) -> str:
         return video_id[0]
     else:
         return None
+
+def fetch_subtitles_with_retry(subtitle_url, retries=3, timeout=10):
+    """Fetch subtitles with retries in case of temporary network failures."""
+    for attempt in range(retries):
+        try:
+            response = requests.get(subtitle_url, timeout=timeout)
+            response.raise_for_status()
+            return response.text, None
+        except requests.exceptions.RequestException as e:
+            if attempt < retries - 1:
+                time.sleep(2)  # Wait before retrying
+                continue
+            else:
+                return None, f"Failed to fetch subtitles after {retries} attempts: {str(e)}"
 
 def load_and_translate_subtitles(video_url: str):
     try:
@@ -42,22 +57,22 @@ def load_and_translate_subtitles(video_url: str):
             auto_subtitles = info_dict.get('automatic_captions', {})
 
             # Try to get manually provided English subtitles first
+            subtitle_url = None
             if 'en' in subtitles:
                 subtitle_url = subtitles['en'][0]['url']
             elif 'a.en' in auto_subtitles:
                 subtitle_url = auto_subtitles['a.en'][0]['url']
             else:
                 # Try to get any auto-generated subtitles if no English ones are available
-                subtitle_url = None
                 for lang_code, subtitle_data in auto_subtitles.items():
                     if lang_code.startswith('a.'):
                         subtitle_url = subtitle_data[0]['url']
                         break
 
             if subtitle_url:
-                response = requests.get(subtitle_url)
-                response.raise_for_status()
-                transcript = response.text
+                transcript, error = fetch_subtitles_with_retry(subtitle_url)
+                if error:
+                    return None, error
 
                 # Translate if subtitles are not in English
                 if 'en' not in subtitle_url and 'a.en' not in subtitle_url:
