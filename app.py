@@ -5,29 +5,43 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import requests
 import json
+from urllib.parse import urlparse, parse_qs
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
+def extract_video_id(youtube_url: str) -> str:
+    parsed_url = urlparse(youtube_url)
+    video_id = parse_qs(parsed_url.query).get('v')
+    if video_id:
+        return video_id[0]
+    else:
+        return None
+
 def create_db_from_youtube_video_url(video_url: str):
     try:
-        loader = YoutubeLoader.from_youtube_url(video_url)
-        transcript = loader.load()
+        video_id = extract_video_id(video_url)
+        if not video_id:
+            return None, None, "Invalid YouTube URL or video ID could not be extracted."
         
+        video_url_base = f"https://www.youtube.com/watch?v={video_id}"
+        loader = YoutubeLoader.from_youtube_url(video_url_base)
+        transcript = loader.load()
+
         if not transcript:
-            return None, None, "Transcript could not be loaded or is empty."
+            return None, None, "I ran into a problem, please try again after sometime."
         
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         docs = text_splitter.split_documents(transcript)
 
         if not docs:
-            return None, None, "No documents were created from the transcript."
+            return None, None, "I ran into a problem, please try again after sometime."
 
         docs_content = [doc.page_content for doc in docs]
 
         if not docs_content:
-            return None, None, "The content of the documents is empty."
+            return None, None, "I ran into a problem, please try again after sometime."
 
         embeddings = embedding_model.encode(docs_content)
 
@@ -37,7 +51,7 @@ def create_db_from_youtube_video_url(video_url: str):
 
         return docs, index, None
     except Exception as e:
-        return None, None, f"An error occurred while processing the video: {str(e)}"
+        return None, None, "I ran into a problem, please try again after sometime."
 
 def get_response_from_query(docs, index, query, k=4):
     query_embedding = embedding_model.encode([query])
@@ -45,13 +59,16 @@ def get_response_from_query(docs, index, query, k=4):
 
     docs_page_content = " ".join([docs[idx].page_content for idx in indices[0]])
 
+    # Modify the prompt to Gemini LLM to ensure it talks in terms of "video"
+    prompt = f"Question: {query}\nVideo Content: {docs_page_content}\nPlease respond as if discussing the video itself, without referencing transcripts or any such terms."
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
     headers = {
         "Content-Type": "application/json"
     }
     payload = {
         "contents": [
-            {"parts": [{"text": f"Question: {query}\nDocs: {docs_page_content}"}]}
+            {"parts": [{"text": prompt}]}
         ]
     }
 
