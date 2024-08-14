@@ -44,9 +44,9 @@ def load_and_translate_subtitles(video_url: str):
             else:
                 return transcript, None
         else:
-            return None, "I ran into a problem, please try again after sometime."
+            return None, "No captions found for this video."
     except Exception as e:
-        return None, "I ran into a problem, please try again after sometime."
+        return None, f"Error loading or translating subtitles: {str(e)}"
 
 def create_db_from_youtube_video_url(video_url: str):
     try:
@@ -58,12 +58,12 @@ def create_db_from_youtube_video_url(video_url: str):
         docs = text_splitter.split_documents([{"page_content": transcript}])
 
         if not docs:
-            return None, None, "I ran into a problem, please try again after sometime."
+            return None, None, "Failed to split the transcript into documents."
 
         docs_content = [doc.page_content for doc in docs]
 
         if not docs_content:
-            return None, None, "I ran into a problem, please try again after sometime."
+            return None, None, "Document content is empty after splitting the transcript."
 
         embeddings = embedding_model.encode(docs_content)
 
@@ -73,56 +73,58 @@ def create_db_from_youtube_video_url(video_url: str):
 
         return docs, index, None
     except Exception as e:
-        return None, None, "I ran into a problem, please try again after sometime."
+        return None, None, f"Error during database creation: {str(e)}"
 
 def get_response_from_query(docs, index, query, k=4):
-    query_embedding = embedding_model.encode([query])
-    distances, indices = index.search(query_embedding, k)
-
-    docs_page_content = " ".join([docs[idx].page_content for idx in indices[0]])
-
-    prompt = f"Question: {query}\nVideo Content: {docs_page_content}\nPlease respond as if discussing the video itself, without referencing transcripts or any such terms."
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
-    headers = {
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "contents": [
-            {"parts": [{"text": prompt}]}
-        ]
-    }
-
     try:
+        query_embedding = embedding_model.encode([query])
+        distances, indices = index.search(query_embedding, k)
+
+        docs_page_content = " ".join([docs[idx].page_content for idx in indices[0]])
+
+        prompt = f"Question: {query}\nVideo Content: {docs_page_content}\nPlease respond as if discussing the video itself, without referencing transcripts or any such terms."
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "contents": [
+                {"parts": [{"text": prompt}]}
+            ]
+        }
+
         response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
         response_data = response.json()
+
+        if 'candidates' not in response_data:
+            return f"Error: 'candidates' not found in response.", None
+
+        if not response_data['candidates']:
+            return f"Error: 'candidates' list is empty.", None
+
+        if 'content' not in response_data['candidates'][0]:
+            return f"Error: 'content' not found in the first candidate.", None
+
+        if 'parts' not in response_data['candidates'][0]['content']:
+            return f"Error: 'parts' not found in the content of the first candidate.", None
+
+        if not response_data['candidates'][0]['content']['parts']:
+            return f"Error: 'parts' list is empty.", None
+
+        try:
+            generated_text = response_data['candidates'][0]['content']['parts'][0]['text']
+        except (KeyError, IndexError) as e:
+            return f"Error accessing response content: {e}", None
+
+        return generated_text, docs
     except requests.exceptions.RequestException as e:
         return f"Request error: {e}", None
     except ValueError as e:
         return f"JSON decoding error: {e} - Response content: {response.text}", None
-
-    if 'candidates' not in response_data:
-        return f"Error: 'candidates' not found in response.", None
-
-    if not response_data['candidates']:
-        return f"Error: 'candidates' list is empty.", None
-
-    if 'content' not in response_data['candidates'][0]:
-        return f"Error: 'content' not found in the first candidate.", None
-
-    if 'parts' not in response_data['candidates'][0]['content']:
-        return f"Error: 'parts' not found in the content of the first candidate.", None
-
-    if not response_data['candidates'][0]['content']['parts']:
-        return f"Error: 'parts' list is empty.", None
-
-    try:
-        generated_text = response_data['candidates'][0]['content']['parts'][0]['text']
-    except (KeyError, IndexError) as e:
-        return f"Error accessing response content: {e}", None
-
-    return generated_text, docs
+    except Exception as e:
+        return f"Error during query processing: {str(e)}", None
 
 # Streamlit interface
 st.title("YouTube Query Assistant")
