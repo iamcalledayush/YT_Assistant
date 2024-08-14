@@ -11,3 +11,4 @@ scikit-learn
 requests
 googletrans==4.0.0-rc1
 youtube-transcript-api
+beautifulsoup4
