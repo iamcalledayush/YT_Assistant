@@ -1,4 +1,4 @@
-from yt_dlp import YoutubeDL
+import youtube_dl
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import faiss
@@ -7,16 +7,11 @@ import json
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
-import time
-import socket
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
-
-# Set socket options to prevent broken pipe errors
-socket.setdefaulttimeout(10)
 
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
@@ -26,29 +21,13 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def fetch_subtitles_with_retry(subtitle_url, retries=5, timeout=10):
-    """Fetch subtitles with retries and exponential backoff in case of temporary network failures."""
-    backoff_time = 2
-    for attempt in range(retries):
-        try:
-            response = requests.get(subtitle_url, timeout=timeout)
-            response.raise_for_status()
-            return response.text, None
-        except requests.exceptions.RequestException as e:
-            if attempt < retries - 1:
-                time.sleep(backoff_time)
-                backoff_time *= 2  # Exponential backoff
-                continue
-            else:
-                return None, f"Failed to fetch subtitles after {retries} attempts: {str(e)}"
-
 def load_and_translate_subtitles(video_url: str):
     try:
         video_id = extract_video_id(video_url)
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
-        
-        # Use yt-dlp to fetch captions
+
+        # Use youtube_dl to fetch captions
         ydl_opts = {
             'skip_download': True,
             'writesubtitles': True,
@@ -57,7 +36,7 @@ def load_and_translate_subtitles(video_url: str):
             'quiet': True,
         }
 
-        with YoutubeDL(ydl_opts) as ydl:
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(video_url, download=False)
             subtitles = info_dict.get('subtitles', {})
             auto_subtitles = info_dict.get('automatic_captions', {})
@@ -76,9 +55,9 @@ def load_and_translate_subtitles(video_url: str):
                         break
 
             if subtitle_url:
-                transcript, error = fetch_subtitles_with_retry(subtitle_url)
-                if error:
-                    return None, error
+                response = requests.get(subtitle_url)
+                response.raise_for_status()
+                transcript = response.text
 
                 # Translate if subtitles are not in English
                 if 'en' not in subtitle_url and 'a.en' not in subtitle_url:
