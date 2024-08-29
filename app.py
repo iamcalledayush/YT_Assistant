@@ -24,10 +24,20 @@ def extract_video_id(youtube_url: str) -> str:
 def download_auto_generated_captions(video_url: str):
     try:
         youtube = pytube.YouTube(video_url)
-        captions = youtube.captions.get_by_language_code('en')
-        if captions is None:
-            return None, "No English captions available for this video."
-        caption_text = captions.generate_srt_captions()
+        captions = youtube.captions
+        
+        # Find auto-generated English captions
+        auto_generated_caption = None
+        for caption in youtube.caption_tracks:
+            if "auto-generated" in caption.name and "English" in caption.name:
+                auto_generated_caption = caption
+                break
+        
+        if not auto_generated_caption:
+            return None, "No auto-generated English captions available for this video."
+        
+        # Download the auto-generated captions
+        caption_text = auto_generated_caption.download()
         return caption_text, None
     except Exception as e:
         return None, f"Error downloading captions: {str(e)}"
