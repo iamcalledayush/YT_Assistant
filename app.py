@@ -5,6 +5,8 @@ import streamlit as st
 from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import faiss
+from urllib.parse import urlparse, parse_qs
+
 
 # Initialize your components
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
