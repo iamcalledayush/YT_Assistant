@@ -1,20 +1,12 @@
-import os
-from googleapiclient.discovery import build
+import yt_dlp
 import faiss
-import requests
 import streamlit as st
-from googletrans import Translator
+from urllib.parse import urlparse, parse_qs
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
-from urllib.parse import urlparse, parse_qs 
 
 # Initialize your components
-gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-translator = Translator()
-
-# Your YouTube Data API key
-YOUTUBE_API_KEY = "AIzaSyD3iEuERg5qL2e2nAS3aO0k34wUHAHlNBQ"
 
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
@@ -24,50 +16,50 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def get_caption_id(video_id):
-    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
-    request = youtube.captions().list(part="snippet", videoId=video_id)
-    response = request.execute()
+def download_auto_generated_captions(video_url: str):
+    ydl_opts = {
+        'skip_download': True,
+        'quiet': True,
+        'writesubtitles': True,
+        'writeautomaticsub': True,
+        'subtitleslangs': ['en'],
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(video_url, download=False)
+        subtitles = info_dict.get('subtitles')
+        
+        if subtitles and 'en' in subtitles:
+            subtitle_url = subtitles['en'][0]['url']
+            response = requests.get(subtitle_url)
+            if response.status_code == 200:
+                srt_data = response.content.decode('utf-8')
+                return srt_data
+        return None
 
-    for item in response.get('items', []):
-        if item['snippet']['language'] == 'en' and item['snippet'].get('trackKind') == 'ASR':
-            return item['id']
-    return None
+def parse_srt(srt_data):
+    lines = srt_data.splitlines()
+    transcript = []
+    for line in lines:
+        if "-->" not in line and line.strip().isdigit() is False:
+            transcript.append(line.strip())
+    return " ".join(transcript)
 
-def download_caption(video_id, caption_id):
-    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
-    request = youtube.captions().download(id=caption_id, tfmt="srt")
+def load_and_parse_captions(video_url: str):
     try:
-        response = request.execute()
-        return response.decode('utf-8')
-    except Exception as e:
-        return None, f"Error downloading captions: {str(e)}"
-
-def load_and_translate_subtitles(video_url: str):
-    try:
-        video_id = extract_video_id(video_url)
-        if not video_id:
-            return None, "Invalid YouTube URL or video ID could not be extracted."
-
-        caption_id = get_caption_id(video_id)
-        if not caption_id:
-            return None, "No auto-generated English captions available for this video."
-
-        transcript, error = download_caption(video_id, caption_id)
-        if error:
-            return None, error
-
-        # Clean up the SRT format by removing time codes and line numbers
-        transcript = "\n".join([line for line in transcript.splitlines() if not line.strip().isdigit() and "-->" not in line and line.strip() != ''])
-
+        srt_data = download_auto_generated_captions(video_url)
+        if not srt_data:
+            return None, "Failed to download or find English captions."
+        
+        transcript = parse_srt(srt_data)
         return transcript, None
 
     except Exception as e:
-        return None, f"Error loading or translating subtitles: {str(e)}"
+        return None, f"Error loading captions: {str(e)}"
 
 def create_db_from_youtube_video_url(video_url: str):
     try:
-        transcript, error = load_and_translate_subtitles(video_url)
+        transcript, error = load_and_parse_captions(video_url)
         if error:
             return None, None, error
 
@@ -101,47 +93,10 @@ def get_response_from_query(docs, index, query, k=4):
 
         docs_page_content = " ".join([docs[idx]["page_content"] for idx in indices[0]])
 
-        prompt = f"Question: {query}\nVideo Content: {docs_page_content}\nPlease respond as if discussing the video itself, without referencing transcripts or any such terms."
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
-        headers = {
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "contents": [
-                {"parts": [{"text": prompt}]}
-            ]
-        }
-
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        response_data = response.json()
-
-        if 'candidates' not in response_data:
-            return f"Error: 'candidates' not found in response.", None
-
-        if not response_data['candidates']:
-            return f"Error: 'candidates' list is empty.", None
-
-        if 'content' not in response_data['candidates'][0]:
-            return f"Error: 'content' not found in the first candidate.", None
-
-        if 'parts' not in response_data['candidates'][0]['content']:
-            return f"Error: 'parts' not found in the content of the first candidate.", None
-
-        if not response_data['candidates'][0]['content']['parts']:
-            return f"Error: 'parts' list is empty.", None
-
-        try:
-            generated_text = response_data['candidates'][0]['content']['parts'][0]['text']
-        except (KeyError, IndexError) as e:
-            return f"Error accessing response content: {e}", None
+        # Replace this with your API integration
+        generated_text = f"Response based on the content: {docs_page_content[:500]}"
 
         return generated_text, docs
-    except requests.exceptions.RequestException as e:
-        return f"Request error: {e}", None
-    except ValueError as e:
-        return f"JSON decoding error: {e} - Response content: {response.text}", None
     except Exception as e:
         return f"Error during query processing: {str(e)}", None
 
