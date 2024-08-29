@@ -1,8 +1,6 @@
-pytube
-langchain
-sentence-transformers
-faiss-cpu
+google-api-python-client
 requests
 streamlit
-googletrans
-yt-dlp
+faiss-cpu
+sentence-transformers
+langchain
