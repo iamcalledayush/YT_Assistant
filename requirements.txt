@@ -4,4 +4,6 @@ sentence-transformers
 faiss-cpu
 requests
 streamlit
-googletrans==4.0.0-rc1
+googletrans
+urllib.parse
+yt-dlp
