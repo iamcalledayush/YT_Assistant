@@ -1,13 +1,12 @@
-from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
+import yt_dlp
 import faiss
 import requests
 import json
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
-import yt_dlp
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from sentence_transformers import SentenceTransformer
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
@@ -50,25 +49,17 @@ def load_and_translate_subtitles(video_url: str):
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
         
-        # Attempt to fetch the transcript or auto-generated subtitles using youtube-transcript-api
-        try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        except NoTranscriptFound:
-            transcript_list = download_auto_generated_captions(video_id)
-            if not transcript_list:
-                return None, "Sorry, I couldn't find any subtitles or auto-generated captions for this video."
-        except TranscriptsDisabled:
-            return None, "Video owner has disabled access to third party applications like me :("
-
-        transcript = " ".join([item['text'] for item in transcript_list])
+        # Attempt to fetch auto-generated subtitles using yt-dlp
+        transcript = download_auto_generated_captions(video_id)
+        if not transcript:
+            return None, "Sorry, I couldn't find any subtitles or auto-generated captions for this video."
         
-        # Detect if the transcript is in English or another language
-        detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
-        if detected_lang not in ['en', 'a.en']:
-            translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
-            return translated_transcript, None
-        else:
-            return transcript, None
+        # Optionally, translate the transcript if it's not in English
+        # Assume the transcript is in SRT format, so we need to clean it up
+        transcript = "\n".join([line for line in transcript.splitlines() if not line.strip().isdigit() and "-->" not in line and line.strip() != ''])
+
+        return transcript, None
+
     except Exception as e:
         return None, f"Error loading or translating subtitles: {str(e)}"
 
