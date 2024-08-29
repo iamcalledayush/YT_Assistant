@@ -6,6 +6,7 @@ import streamlit as st
 from googletrans import Translator
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
+from urllib.parse import urlparse, parse_qs 
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
