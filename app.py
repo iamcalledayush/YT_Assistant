@@ -1,8 +1,7 @@
-import yt_dlp
+import os
+from googleapiclient.discovery import build
 import faiss
 import requests
-import json
-from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -13,6 +12,9 @@ gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
 
+# Your YouTube Data API key
+YOUTUBE_API_KEY = "AIzaSyD3iEuERg5qL2e2nAS3aO0k34wUHAHlNBQ"
+
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
     video_id = parse_qs(parsed_url.query).get('v')
@@ -21,40 +23,42 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def download_auto_generated_captions(video_id: str):
-    ydl_opts = {
-        'subtitleslangs': ['en'],
-        'writeautomaticsub': True,
-        'skip_download': True,
-        'quiet': True,
-        'outtmpl': '%(id)s.%(ext)s',
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(f'https://www.youtube.com/watch?v={video_id}', download=False)
-        captions = info.get('requested_subtitles')
-        
-        if captions and 'en' in captions:
-            subtitle_url = captions['en']['url']
-            response = requests.get(subtitle_url)
-            if response.status_code == 200:
-                return response.text, None
-        
-        return None, "No auto-generated English captions available for this video."
+def get_caption_id(video_id):
+    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+    request = youtube.captions().list(part="snippet", videoId=video_id)
+    response = request.execute()
+
+    for item in response.get('items', []):
+        if item['snippet']['language'] == 'en' and item['snippet'].get('trackKind') == 'ASR':
+            return item['id']
+    return None
+
+def download_caption(video_id, caption_id):
+    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+    request = youtube.captions().download(id=caption_id, tfmt="srt")
+    try:
+        response = request.execute()
+        return response.decode('utf-8')
+    except Exception as e:
+        return None, f"Error downloading captions: {str(e)}"
 
 def load_and_translate_subtitles(video_url: str):
     try:
         video_id = extract_video_id(video_url)
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
-        
-        transcript, error = download_auto_generated_captions(video_id)
+
+        caption_id = get_caption_id(video_id)
+        if not caption_id:
+            return None, "No auto-generated English captions available for this video."
+
+        transcript, error = download_caption(video_id, caption_id)
         if error:
             return None, error
-        
+
         # Clean up the SRT format by removing time codes and line numbers
         transcript = "\n".join([line for line in transcript.splitlines() if not line.strip().isdigit() and "-->" not in line and line.strip() != ''])
-        
+
         return transcript, None
 
     except Exception as e:
@@ -65,7 +69,7 @@ def create_db_from_youtube_video_url(video_url: str):
         transcript, error = load_and_translate_subtitles(video_url)
         if error:
             return None, None, error
-        
+
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         docs = text_splitter.split_text(transcript)
 
@@ -143,7 +147,21 @@ def get_response_from_query(docs, index, query, k=4):
 # Streamlit interface
 st.title("YouTube Query Assistant")
 
+st.write("""
+## Welcome to the YouTube Query Assistant!
 
+This AI-powered tool is designed to save you time by providing precise answers to your queries about any YouTube video.
+
+## Why Use This Tool?
+- **Time-Saving**: No need to scrub through long videos. Get the answers you need in seconds.
+- **Precision**: Target specific content within a video without watching it in full.
+- **Informed Viewing**: Know in advance if the video covers the topic you’re interested in.
+
+## How It Works:
+1. **Enter the YouTube Video URL**: Provide the link to the YouTube video you want to query.
+2. **Ask Your Question**: Type in the specific information you're looking for within the video.
+3. **Get Instant Results**: The AI processes the video content and returns the most relevant information, helping you quickly determine if the video contains what you need.
+""")
 
 video_url = st.text_input("Enter YouTube video URL")
 query = st.text_input("Enter your query")
