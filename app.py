@@ -8,6 +8,8 @@ import streamlit as st
 from googletrans import Translator
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
@@ -21,6 +23,20 @@ def extract_video_id(youtube_url: str) -> str:
         return video_id[0]
     else:
         return None
+
+def requests_retry_session(retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 504), session=None):
+    session = session or requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
 
 def download_auto_generated_captions(video_id: str, retries=3, delay=5):
     ydl_opts = {
@@ -41,7 +57,7 @@ def download_auto_generated_captions(video_id: str, retries=3, delay=5):
 
             if subtitles and 'en' in subtitles:
                 subtitle_url = subtitles['en']['url']
-                response = requests.get(subtitle_url)
+                response = requests_retry_session().get(subtitle_url)
                 if response.status_code == 200:
                     return response.text
             return None
@@ -63,8 +79,7 @@ def load_and_translate_subtitles(video_url: str):
         if not transcript:
             return None, "Sorry, I couldn't find any subtitles or auto-generated captions for this video."
         
-        # Optionally, translate the transcript if it's not in English
-        # Assume the transcript is in SRT format, so we need to clean it up
+        # Clean up the SRT format by removing time codes and line numbers
         transcript = "\n".join([line for line in transcript.splitlines() if not line.strip().isdigit() and "-->" not in line and line.strip() != ''])
 
         return transcript, None
