@@ -1,12 +1,16 @@
-import yt_dlp
-import faiss
+import os
+import requests
+from googleapiclient.discovery import build
 import streamlit as st
-from urllib.parse import urlparse, parse_qs
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import faiss
 
 # Initialize your components
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Your YouTube Data API key
+YOUTUBE_API_KEY = "AIzaSyD3iEuERg5qL2e2nAS3aO0k34wUHAHlNBQ"
 
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
@@ -16,50 +20,61 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def download_auto_generated_captions(video_url: str):
-    ydl_opts = {
-        'skip_download': True,
-        'quiet': True,
-        'writesubtitles': True,
-        'writeautomaticsub': True,
-        'subtitleslangs': ['en'],
-    }
+def list_captions(video_id):
+    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+    request = youtube.captions().list(part="snippet", videoId=video_id)
+    response = request.execute()
     
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info_dict = ydl.extract_info(video_url, download=False)
-        subtitles = info_dict.get('subtitles')
-        
-        if subtitles and 'en' in subtitles:
-            subtitle_url = subtitles['en'][0]['url']
-            response = requests.get(subtitle_url)
-            if response.status_code == 200:
-                srt_data = response.content.decode('utf-8')
-                return srt_data
-        return None
+    captions = []
+    for item in response.get('items', []):
+        captions.append({
+            'id': item['id'],
+            'language': item['snippet']['language'],
+            'name': item['snippet']['name'],
+            'is_auto_generated': item['snippet']['trackKind'] == 'ASR',
+        })
+    return captions
 
-def parse_srt(srt_data):
-    lines = srt_data.splitlines()
-    transcript = []
-    for line in lines:
-        if "-->" not in line and line.strip().isdigit() is False:
-            transcript.append(line.strip())
-    return " ".join(transcript)
-
-def load_and_parse_captions(video_url: str):
+def download_caption(caption_id):
+    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+    request = youtube.captions().download(id=caption_id, tfmt='srt')
     try:
-        srt_data = download_auto_generated_captions(video_url)
-        if not srt_data:
-            return None, "Failed to download or find English captions."
-        
-        transcript = parse_srt(srt_data)
+        response = request.execute()
+        return response.decode('utf-8')
+    except Exception as e:
+        return None, f"Error downloading captions: {str(e)}"
+
+def load_and_translate_subtitles(video_url: str):
+    try:
+        video_id = extract_video_id(video_url)
+        if not video_id:
+            return None, "Invalid YouTube URL or video ID could not be extracted."
+
+        captions = list_captions(video_id)
+        auto_generated_caption = None
+        for caption in captions:
+            if caption['language'] == 'en' and caption['is_auto_generated']:
+                auto_generated_caption = caption['id']
+                break
+
+        if not auto_generated_caption:
+            return None, "No auto-generated English captions available for this video."
+
+        transcript, error = download_caption(auto_generated_caption)
+        if error:
+            return None, error
+
+        # Clean up the SRT format by removing time codes and line numbers
+        transcript = "\n".join([line for line in transcript.splitlines() if not line.strip().isdigit() and "-->" not in line and line.strip() != ''])
+
         return transcript, None
 
     except Exception as e:
-        return None, f"Error loading captions: {str(e)}"
+        return None, f"Error loading or translating subtitles: {str(e)}"
 
 def create_db_from_youtube_video_url(video_url: str):
     try:
-        transcript, error = load_and_parse_captions(video_url)
+        transcript, error = load_and_translate_subtitles(video_url)
         if error:
             return None, None, error
 
