@@ -9,7 +9,7 @@ import streamlit as st
 from googletrans import Translator
 
 # Initialize your components
-gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
+gemini_api_key = "AIzaSyABmAS2EoLwtmWqNtaoeZxk0-qJn91OgWg"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
 
