@@ -1,15 +1,12 @@
-import yt_dlp
+import pytube
 import faiss
 import requests
 import json
-import time
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 
 # Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
@@ -24,60 +21,22 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def requests_retry_session(retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 504), session=None):
-    session = session or requests.Session()
-    retry = Retry(
-        total=retries,
-        read=retries,
-        connect=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=status_forcelist,
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    return session
-
-def download_auto_generated_captions(video_id: str, retries=3, delay=5):
-    ydl_opts = {
-        'writesubtitles': True,
-        'writeautomaticsub': True,
-        'subtitlesformat': 'srt',
-        'skip_download': True,
-        'quiet': True,
-        'subtitleslangs': ['en'],
-        'outtmpl': '%(id)s',
-    }
-
-    for attempt in range(retries):
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(f'https://www.youtube.com/watch?v={video_id}', download=False)
-                subtitles = info_dict.get('requested_subtitles')
-
-            if subtitles and 'en' in subtitles:
-                subtitle_url = subtitles['en']['url']
-                response = requests_retry_session().get(subtitle_url)
-                if response.status_code == 200:
-                    return response.text
-            return None
-        except Exception as e:
-            if attempt < retries - 1:
-                time.sleep(delay)
-                continue
-            else:
-                raise e
+def download_auto_generated_captions(video_url: str):
+    try:
+        youtube = pytube.YouTube(video_url)
+        captions = youtube.captions.get_by_language_code('en')
+        if captions is None:
+            return None, "No English captions available for this video."
+        caption_text = captions.generate_srt_captions()
+        return caption_text, None
+    except Exception as e:
+        return None, f"Error downloading captions: {str(e)}"
 
 def load_and_translate_subtitles(video_url: str):
     try:
-        video_id = extract_video_id(video_url)
-        if not video_id:
-            return None, "Invalid YouTube URL or video ID could not be extracted."
-        
-        # Attempt to fetch auto-generated subtitles using yt-dlp
-        transcript = download_auto_generated_captions(video_id)
-        if not transcript:
-            return None, "Sorry, I couldn't find any subtitles or auto-generated captions for this video."
+        transcript, error = download_auto_generated_captions(video_url)
+        if error:
+            return None, error
         
         # Clean up the SRT format by removing time codes and line numbers
         transcript = "\n".join([line for line in transcript.splitlines() if not line.strip().isdigit() and "-->" not in line and line.strip() != ''])
