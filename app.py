@@ -2,6 +2,7 @@ import yt_dlp
 import faiss
 import requests
 import json
+import time
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
@@ -21,7 +22,7 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def download_auto_generated_captions(video_id: str):
+def download_auto_generated_captions(video_id: str, retries=3, delay=5):
     ydl_opts = {
         'writesubtitles': True,
         'writeautomaticsub': True,
@@ -32,16 +33,24 @@ def download_auto_generated_captions(video_id: str):
         'outtmpl': '%(id)s',
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info_dict = ydl.extract_info(f'https://www.youtube.com/watch?v={video_id}', download=False)
-        subtitles = info_dict.get('requested_subtitles')
+    for attempt in range(retries):
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(f'https://www.youtube.com/watch?v={video_id}', download=False)
+                subtitles = info_dict.get('requested_subtitles')
 
-    if subtitles and 'en' in subtitles:
-        subtitle_url = subtitles['en']['url']
-        response = requests.get(subtitle_url)
-        if response.status_code == 200:
-            return response.text
-    return None
+            if subtitles and 'en' in subtitles:
+                subtitle_url = subtitles['en']['url']
+                response = requests.get(subtitle_url)
+                if response.status_code == 200:
+                    return response.text
+            return None
+        except Exception as e:
+            if attempt < retries - 1:
+                time.sleep(delay)
+                continue
+            else:
+                raise e
 
 def load_and_translate_subtitles(video_url: str):
     try:
