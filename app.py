@@ -7,9 +7,10 @@ import json
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
+import yt_dlp
 
 # Initialize your components
-gemini_api_key = "AIzaSyABmAS2EoLwtmWqNtaoeZxk0-qJn91OgWg"
+gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
 
@@ -21,6 +22,28 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
+def download_auto_generated_captions(video_id: str):
+    ydl_opts = {
+        'writesubtitles': True,
+        'writeautomaticsub': True,
+        'subtitlesformat': 'srt',
+        'skip_download': True,
+        'quiet': True,
+        'subtitleslangs': ['en'],
+        'outtmpl': '%(id)s',
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(f'https://www.youtube.com/watch?v={video_id}', download=False)
+        subtitles = info_dict.get('requested_subtitles')
+
+    if subtitles and 'en' in subtitles:
+        subtitle_url = subtitles['en']['url']
+        response = requests.get(subtitle_url)
+        if response.status_code == 200:
+            return response.text
+    return None
+
 def load_and_translate_subtitles(video_url: str):
     try:
         video_id = extract_video_id(video_url)
@@ -31,9 +54,8 @@ def load_and_translate_subtitles(video_url: str):
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
         except NoTranscriptFound:
-            try:
-                transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-            except NoTranscriptFound:
+            transcript_list = download_auto_generated_captions(video_id)
+            if not transcript_list:
                 return None, "Sorry, I couldn't find any subtitles or auto-generated captions for this video."
         except TranscriptsDisabled:
             return None, "Video owner has disabled access to third party applications like me :("
