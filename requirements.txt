@@ -14,3 +14,4 @@ youtube-transcript-api
 pytube
 youtube_dl
 yt-dlp
+pytube
