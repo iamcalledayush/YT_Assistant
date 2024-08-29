@@ -13,3 +13,4 @@ googletrans==4.0.0-rc1
 youtube-transcript-api
 pytube
 youtube_dl
+yt-dlp
