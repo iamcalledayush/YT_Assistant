@@ -5,5 +5,4 @@ faiss-cpu
 requests
 streamlit
 googletrans
-urllib.parse
 yt-dlp
