@@ -1,4 +1,4 @@
-import pytube
+import yt_dlp
 import faiss
 import requests
 import json
@@ -21,36 +21,40 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def download_auto_generated_captions(video_url: str):
-    try:
-        youtube = pytube.YouTube(video_url)
-        captions = youtube.captions
+def download_auto_generated_captions(video_id: str):
+    ydl_opts = {
+        'subtitleslangs': ['en'],
+        'writeautomaticsub': True,
+        'skip_download': True,
+        'quiet': True,
+        'outtmpl': '%(id)s.%(ext)s',
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(f'https://www.youtube.com/watch?v={video_id}', download=False)
+        captions = info.get('requested_subtitles')
         
-        # Find auto-generated English captions
-        auto_generated_caption = None
-        for caption in youtube.caption_tracks:
-            if "auto-generated" in caption.name and "English" in caption.name:
-                auto_generated_caption = caption
-                break
+        if captions and 'en' in captions:
+            subtitle_url = captions['en']['url']
+            response = requests.get(subtitle_url)
+            if response.status_code == 200:
+                return response.text, None
         
-        if not auto_generated_caption:
-            return None, "No auto-generated English captions available for this video."
-        
-        # Download the auto-generated captions
-        caption_text = auto_generated_caption.download()
-        return caption_text, None
-    except Exception as e:
-        return None, f"Error downloading captions: {str(e)}"
+        return None, "No auto-generated English captions available for this video."
 
 def load_and_translate_subtitles(video_url: str):
     try:
-        transcript, error = download_auto_generated_captions(video_url)
+        video_id = extract_video_id(video_url)
+        if not video_id:
+            return None, "Invalid YouTube URL or video ID could not be extracted."
+        
+        transcript, error = download_auto_generated_captions(video_id)
         if error:
             return None, error
         
         # Clean up the SRT format by removing time codes and line numbers
         transcript = "\n".join([line for line in transcript.splitlines() if not line.strip().isdigit() and "-->" not in line and line.strip() != ''])
-
+        
         return transcript, None
 
     except Exception as e:
@@ -63,9 +67,8 @@ def create_db_from_youtube_video_url(video_url: str):
             return None, None, error
         
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        docs = text_splitter.split_text(transcript)  # Use split_text instead of split_documents
+        docs = text_splitter.split_text(transcript)
 
-        # Convert the resulting split text into the required format
         docs = [{"page_content": doc} for doc in docs]
 
         if not docs:
