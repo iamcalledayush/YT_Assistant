@@ -1,18 +1,17 @@
-import os
-import requests
-from googleapiclient.discovery import build
-import streamlit as st
-from sentence_transformers import SentenceTransformer
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from sentence_transformers import SentenceTransformer
 import faiss
+import requests
+import json
 from urllib.parse import urlparse, parse_qs
-
+import streamlit as st
+from googletrans import Translator
 
 # Initialize your components
+gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-
-# Your YouTube Data API key
-YOUTUBE_API_KEY = "AIzaSyD3iEuERg5qL2e2nAS3aO0k34wUHAHlNBQ"
+translator = Translator()
 
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
@@ -22,55 +21,28 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
-def list_captions(video_id):
-    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
-    request = youtube.captions().list(part="snippet", videoId=video_id)
-    response = request.execute()
-    
-    captions = []
-    for item in response.get('items', []):
-        captions.append({
-            'id': item['id'],
-            'language': item['snippet']['language'],
-            'name': item['snippet']['name'],
-            'is_auto_generated': item['snippet']['trackKind'] == 'ASR',
-        })
-    return captions
-
-def download_caption(caption_id):
-    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
-    request = youtube.captions().download(id=caption_id, tfmt='srt')
-    try:
-        response = request.execute()
-        return response.decode('utf-8')
-    except Exception as e:
-        return None, f"Error downloading captions: {str(e)}"
-
 def load_and_translate_subtitles(video_url: str):
     try:
         video_id = extract_video_id(video_url)
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
-
-        captions = list_captions(video_id)
-        auto_generated_caption = None
-        for caption in captions:
-            if caption['language'] == 'en' and caption['is_auto_generated']:
-                auto_generated_caption = caption['id']
-                break
-
-        if not auto_generated_caption:
-            return None, "No auto-generated English captions available for this video."
-
-        transcript, error = download_caption(auto_generated_caption)
-        if error:
-            return None, error
-
-        # Clean up the SRT format by removing time codes and line numbers
-        transcript = "\n".join([line for line in transcript.splitlines() if not line.strip().isdigit() and "-->" not in line and line.strip() != ''])
-
-        return transcript, None
-
+        
+        # Attempt to fetch the transcript using youtube-transcript-api
+        try:
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            transcript = " ".join([item['text'] for item in transcript_list])
+        except NoTranscriptFound:
+            return None, "Sorry, currently I am only capable of understanding English, can you try a video in English Language?"
+        except TranscriptsDisabled:
+            return None, "Video owner has disabled access to third party applications like me :("
+        
+        # Detect if the transcript is in English or another language
+        detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
+        if detected_lang not in ['en', 'a.en']:
+            translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
+            return translated_transcript, None
+        else:
+            return transcript, None
     except Exception as e:
         return None, f"Error loading or translating subtitles: {str(e)}"
 
@@ -79,10 +51,11 @@ def create_db_from_youtube_video_url(video_url: str):
         transcript, error = load_and_translate_subtitles(video_url)
         if error:
             return None, None, error
-
+        
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        docs = text_splitter.split_text(transcript)
+        docs = text_splitter.split_text(transcript)  # Use split_text instead of split_documents
 
+        # Convert the resulting split text into the required format
         docs = [{"page_content": doc} for doc in docs]
 
         if not docs:
@@ -110,10 +83,47 @@ def get_response_from_query(docs, index, query, k=4):
 
         docs_page_content = " ".join([docs[idx]["page_content"] for idx in indices[0]])
 
-        # Replace this with your API integration
-        generated_text = f"Response based on the content: {docs_page_content[:500]}"
+        prompt = f"Question: {query}\nVideo Content: {docs_page_content}\nPlease respond as if discussing the video itself, without referencing transcripts or any such terms."
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "contents": [
+                {"parts": [{"text": prompt}]}
+            ]
+        }
+
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        response_data = response.json()
+
+        if 'candidates' not in response_data:
+            return f"Error: 'candidates' not found in response.", None
+
+        if not response_data['candidates']:
+            return f"Error: 'candidates' list is empty.", None
+
+        if 'content' not in response_data['candidates'][0]:
+            return f"Error: 'content' not found in the first candidate.", None
+
+        if 'parts' not in response_data['candidates'][0]['content']:
+            return f"Error: 'parts' not found in the content of the first candidate.", None
+
+        if not response_data['candidates'][0]['content']['parts']:
+            return f"Error: 'parts' list is empty.", None
+
+        try:
+            generated_text = response_data['candidates'][0]['content']['parts'][0]['text']
+        except (KeyError, IndexError) as e:
+            return f"Error accessing response content: {e}", None
 
         return generated_text, docs
+    except requests.exceptions.RequestException as e:
+        return f"Request error: {e}", None
+    except ValueError as e:
+        return f"JSON decoding error: {e} - Response content: {response.text}", None
     except Exception as e:
         return f"Error during query processing: {str(e)}", None
 
