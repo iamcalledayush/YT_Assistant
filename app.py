@@ -27,14 +27,18 @@ def load_and_translate_subtitles(video_url: str):
         if not video_id:
             return None, "Invalid YouTube URL or video ID could not be extracted."
         
-        # Attempt to fetch the transcript using youtube-transcript-api
+        # Attempt to fetch the transcript or auto-generated subtitles using youtube-transcript-api
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-            transcript = " ".join([item['text'] for item in transcript_list])
         except NoTranscriptFound:
-            return None, "Sorry, currently I am only capable of understanding English, can you try a video in English Language?"
+            try:
+                transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+            except NoTranscriptFound:
+                return None, "Sorry, I couldn't find any subtitles or auto-generated captions for this video."
         except TranscriptsDisabled:
             return None, "Video owner has disabled access to third party applications like me :("
+
+        transcript = " ".join([item['text'] for item in transcript_list])
         
         # Detect if the transcript is in English or another language
         detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
