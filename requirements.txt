@@ -8,5 +8,6 @@ sentence_transformers
 faiss-cpu
 scikit-learn
 requests
-openai-whisper
+pytube
+pydub
 googletrans
