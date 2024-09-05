@@ -1,4 +1,4 @@
-from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+from haystack.nodes.audio.whisper import WhisperTranscriber
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import faiss
@@ -12,6 +12,7 @@ from googletrans import Translator
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
+whisper_transcriber = WhisperTranscriber()
 
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
@@ -21,24 +22,32 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
+def download_youtube_audio(video_url: str) -> str:
+    # Implement this function to download YouTube audio using a library like `pytube`
+    # Return the path to the downloaded audio file
+    pass
+
+def transcribe_audio(audio_file_path: str) -> str:
+    try:
+        transcription = whisper_transcriber.transcribe(audio_file_path)
+        transcript = transcription["text"]
+        return transcript, None
+    except Exception as e:
+        return None, f"Error during audio transcription: {str(e)}"
+
 def load_and_translate_subtitles(video_url: str):
     try:
-        video_id = extract_video_id(video_url)
-        if not video_id:
-            return None, "Invalid YouTube URL or video ID could not be extracted."
+        audio_file_path = download_youtube_audio(video_url)
+        if not audio_file_path:
+            return None, "Error downloading audio from YouTube video."
         
-        # Attempt to fetch the transcript using youtube-transcript-api
-        try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-            transcript = " ".join([item['text'] for item in transcript_list])
-        except NoTranscriptFound:
-            return None, "Sorry, currently I am only capable of understanding English, can you try a video in English Language?"
-        except TranscriptsDisabled:
-            return None, "Video owner has disabled access to third party applications like me :("
+        transcript, error = transcribe_audio(audio_file_path)
+        if error:
+            return None, error
         
-        # Detect if the transcript is in English or another language
-        detected_lang = YouTubeTranscriptApi.list_transcripts(video_id).find_transcript(['en', 'a.en']).language_code
-        if detected_lang not in ['en', 'a.en']:
+        # Use translation only if needed (assuming Whisper can detect non-English languages)
+        detected_lang = whisper_transcriber.detect_language(audio_file_path)
+        if detected_lang != 'en':
             translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
             return translated_transcript, None
         else:
@@ -134,11 +143,6 @@ st.write("""
 ## Welcome to the YouTube Query Assistant!
 
 This AI-powered tool is designed to save you time by providing precise answers to your queries about any YouTube video.
-
-## Why Use This Tool?
-- **Time-Saving**: No need to scrub through long videos. Get the answers you need in seconds.
-- **Precision**: Target specific content within a video without watching it in full.
-- **Informed Viewing**: Know in advance if the video covers the topic you’re interested in.
 
 ## How It Works:
 1. **Enter the YouTube Video URL**: Provide the link to the YouTube video you want to query.
