@@ -3,13 +3,9 @@ langchain_community
 streamlit
 python-dotenv
 openai
-youtube-transcript-api
 Tiktoken
 sentence_transformers
 faiss-cpu
 scikit-learn
 requests
-googletrans==4.0.0-rc1
-youtube-transcript-api
-youtube_dl
-yt-dlp
+haystack.nodes.audio.whisper
