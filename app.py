@@ -8,7 +8,6 @@ from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
 
-# Initialize your components
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
