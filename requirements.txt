@@ -8,4 +8,4 @@ sentence_transformers
 faiss-cpu
 scikit-learn
 requests
-haystack.nodes.audio.whisper
+haystack-ai
