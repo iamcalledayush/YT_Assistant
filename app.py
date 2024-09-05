@@ -1,4 +1,4 @@
-from haystack.nodes.audio.whisper import WhisperTranscriber
+import whisper
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import faiss
@@ -12,7 +12,9 @@ from googletrans import Translator
 gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
-whisper_transcriber = WhisperTranscriber()
+
+# Load Whisper model
+whisper_model = whisper.load_model("base")
 
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
@@ -29,8 +31,8 @@ def download_youtube_audio(video_url: str) -> str:
 
 def transcribe_audio(audio_file_path: str) -> str:
     try:
-        transcription = whisper_transcriber.transcribe(audio_file_path)
-        transcript = transcription["text"]
+        result = whisper_model.transcribe(audio_file_path)
+        transcript = result["text"]
         return transcript, None
     except Exception as e:
         return None, f"Error during audio transcription: {str(e)}"
@@ -45,8 +47,8 @@ def load_and_translate_subtitles(video_url: str):
         if error:
             return None, error
         
-        # Use translation only if needed (assuming Whisper can detect non-English languages)
-        detected_lang = whisper_transcriber.detect_language(audio_file_path)
+        # Detect language using Whisper and translate if necessary
+        detected_lang = whisper_model.transcribe(audio_file_path, language="auto")["language"]
         if detected_lang != 'en':
             translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
             return translated_transcript, None
@@ -62,7 +64,7 @@ def create_db_from_youtube_video_url(video_url: str):
             return None, None, error
         
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        docs = text_splitter.split_text(transcript)  # Use split_text instead of split_documents
+        docs = text_splitter.split_text(transcript)
 
         # Convert the resulting split text into the required format
         docs = [{"page_content": doc} for doc in docs]
