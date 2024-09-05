@@ -1,20 +1,21 @@
-import openai-whisper
+import openai
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import faiss
 import requests
-import json
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
 from googletrans import Translator
+from pytube import YouTube
+from pydub import AudioSegment
+import os
 
-gemini_api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"
+# Initialize your components
+openai.api_key = "AIzaSyCSOt-RM3M-SsEQObh5ZBe-XwDK36oD3lM"  # Set your OpenAI API key
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
 
-# Load Whisper model
-whisper_model = whisper.load_model("small.en")  # Change to "small" or "base" if needed
-
+# Function to extract the video ID from the YouTube URL
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
     video_id = parse_qs(parsed_url.query).get('v')
@@ -23,31 +24,46 @@ def extract_video_id(youtube_url: str) -> str:
     else:
         return None
 
+# Function to download YouTube video and convert to mp3
 def download_youtube_audio(video_url: str) -> str:
-    # Implement this function to download YouTube audio using a library like `pytube`
-    # Return the path to the downloaded audio file
-    pass
-
-def transcribe_audio(audio_file_path: str) -> str:
     try:
-        result = whisper_model.transcribe(audio_file_path)
-        transcript = result["text"]
-        return transcript, None
+        video = YouTube(video_url)
+        stream = video.streams.filter(only_audio=True).first()
+        output_file = stream.download()
+        base, ext = os.path.splitext(output_file)
+        audio_file = base + '.mp3'
+        AudioSegment.from_file(output_file).export(audio_file, format="mp3")
+        os.remove(output_file)
+        return audio_file
+    except Exception as e:
+        return None, f"Error downloading or converting audio: {str(e)}"
+
+# Function to transcribe the audio file using OpenAI Whisper API
+def transcribe_audio_openai(audio_file_path: str):
+    try:
+        with open(audio_file_path, "rb") as audio_file:
+            transcription = openai.Audio.transcribe(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text"
+            )
+        return transcription["text"], None
     except Exception as e:
         return None, f"Error during audio transcription: {str(e)}"
 
+# Function to load and translate subtitles
 def load_and_translate_subtitles(video_url: str):
     try:
-        audio_file_path = download_youtube_audio(video_url)
+        audio_file_path, error = download_youtube_audio(video_url)
         if not audio_file_path:
-            return None, "Error downloading audio from YouTube video."
-        
-        transcript, error = transcribe_audio(audio_file_path)
+            return None, error
+
+        transcript, error = transcribe_audio_openai(audio_file_path)
         if error:
             return None, error
-        
-        # Detect language using Whisper and translate if necessary
-        detected_lang = whisper_model.transcribe(audio_file_path, language="auto")["language"]
+
+        # Detect language if not English and translate if necessary
+        detected_lang = "en"  # Whisper can detect non-English languages, but we assume English by default here
         if detected_lang != 'en':
             translated_transcript = translator.translate(transcript, src=detected_lang, dest='en').text
             return translated_transcript, None
@@ -56,6 +72,7 @@ def load_and_translate_subtitles(video_url: str):
     except Exception as e:
         return None, f"Error loading or translating subtitles: {str(e)}"
 
+# Function to create a FAISS index from the transcript
 def create_db_from_youtube_video_url(video_url: str):
     try:
         transcript, error = load_and_translate_subtitles(video_url)
@@ -72,10 +89,6 @@ def create_db_from_youtube_video_url(video_url: str):
             return None, None, "Failed to split the transcript into documents."
 
         docs_content = [doc["page_content"] for doc in docs]
-
-        if not docs_content:
-            return None, None, "Document content is empty after splitting the transcript."
-
         embeddings = embedding_model.encode(docs_content)
 
         dimension = embeddings.shape[1]
@@ -86,6 +99,7 @@ def create_db_from_youtube_video_url(video_url: str):
     except Exception as e:
         return None, None, f"Error during database creation: {str(e)}"
 
+# Function to query the index and get a response
 def get_response_from_query(docs, index, query, k=4):
     try:
         query_embedding = embedding_model.encode([query])
@@ -95,7 +109,7 @@ def get_response_from_query(docs, index, query, k=4):
 
         prompt = f"Question: {query}\nVideo Content: {docs_page_content}\nPlease respond as if discussing the video itself, without referencing transcripts or any such terms."
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={openai.api_key}"
         headers = {
             "Content-Type": "application/json"
         }
