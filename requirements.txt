@@ -8,5 +8,5 @@ sentence_transformers
 faiss-cpu
 scikit-learn
 requests
-git+https://github.com/openai/whisper.git
+openai-whisper
 googletrans
