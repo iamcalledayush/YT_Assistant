@@ -14,7 +14,7 @@ embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 translator = Translator()
 
 # Load Whisper model
-whisper_model = whisper.load_model("base")
+whisper_model = whisper.load_model("small.en")  # Change to "small" or "base" if needed
 
 def extract_video_id(youtube_url: str) -> str:
     parsed_url = urlparse(youtube_url)
