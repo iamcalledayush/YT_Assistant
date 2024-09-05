@@ -9,3 +9,4 @@ faiss-cpu
 scikit-learn
 requests
 whisper
+googletrans
