@@ -1,13 +1,1 @@
-Langchain
-langchain_community
 streamlit
-python-dotenv
-openai
-Tiktoken
-sentence_transformers
-faiss-cpu
-scikit-learn
-requests
-pytube
-pydub
-googletrans
